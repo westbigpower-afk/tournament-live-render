@@ -42,7 +42,7 @@
     <div class="container">
         <h1>🏆 인하의대 스매쉬 토너먼트 대진표</h1>
         <div class="input-section">
-            <p>참여자의 이름과 성별을 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 팀은 랜덤입니다! 승자 수정은 해당 경기를 <b>꾹 누르기 → OK</b>입니다.</span></p>
+            <p>참여자의 이름과 성별을 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 팀은 랜덤이며, 여여 팀은 가능한 한 최소화됩니다. 승자 수정은 해당 경기를 <b>꾹 누르기 → OK</b>입니다.</span></p>
             <div id="participantList" class="participant-list"></div>
             <button class="small-button" onclick="addParticipantRow()">+ 참가자 추가</button><br>
             <button onclick="generateBracket()">대진표 짜기</button>
@@ -114,12 +114,10 @@
             let males = shuffle(participants.filter((p) => p.gender === 'M'));
             let females = shuffle(participants.filter((p) => p.gender === 'F'));
 
-            if (females.length > males.length + 1) {
-                throw new Error(`현재 인원에서는 여여 팀을 피할 수 없습니다. 남자 ${males.length}명, 여자 ${females.length}명이므로 여자를 최대 ${males.length + 1}명까지 배치할 수 있습니다.`);
-            }
-
             const teams = [];
+            let femaleFemaleCount = 0;
 
+            // 1순위: 남여 팀을 최대한 많이 만들어 여여 팀 발생을 최소화합니다.
             while (females.length && males.length) {
                 const female = females.pop();
                 const male = males.pop();
@@ -127,10 +125,20 @@
                 teams.push(`${pair[0]} & ${pair[1]}`);
             }
 
+            // 2순위: 남자가 부족해서 여자가 남는 경우에만 여여 팀을 최소 개수로 만듭니다.
+            // 홀수로 1명이 남으면 1인 팀으로 둬서 불필요한 여여 팀을 만들지 않습니다.
+            while (females.length >= 2) {
+                const f1 = females.pop();
+                const f2 = females.pop();
+                teams.push(`${f1.name} & ${f2.name}`);
+                femaleFemaleCount++;
+            }
+
             if (females.length === 1) {
                 teams.push(`${females.pop().name} (1인)`);
             }
 
+            // 3순위: 남자가 남으면 남남 팀을 만듭니다.
             while (males.length >= 2) {
                 const m1 = males.pop();
                 const m2 = males.pop();
@@ -141,8 +149,13 @@
                 teams.push(`${males.pop().name} (1인)`);
             }
 
+            if (femaleFemaleCount > 0) {
+                alert(`여자 참가자가 남자 참가자보다 많아서 여여 팀 ${femaleFemaleCount}개가 불가피하게 생성됩니다.`);
+            }
+
             return shuffle(teams);
         }
+
 
 
         socket.on('connect', () => { document.getElementById('connectionStatus').innerText = '🟢 실시간 서버 연결됨'; });
