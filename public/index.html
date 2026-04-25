@@ -41,7 +41,7 @@
     <div class="container">
         <h1>🏆 인하의대 스매쉬 토너먼트 대진표</h1>
         <div class="input-section">
-            <p>참여자의 이름과 성별을 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 팀은 랜덤입니다! 승자 수정은 같은 경기에서 <b>3번 클릭 → OK</b>입니다.</span></p>
+            <p>참여자의 이름과 성별을 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 팀은 랜덤입니다! 승자 수정은 해당 경기를 <b>꾹 누르기 → OK</b>입니다.</span></p>
             <div id="participantList" class="participant-list"></div>
             <button class="small-button" onclick="addParticipantRow()">+ 참가자 추가</button><br>
             <button onclick="generateBracket()">대진표 짜기</button>
@@ -60,7 +60,9 @@
         window.rounds = [];
         window.byeCycle = 0;
         window.thirdPlaceResult = null;
-        const resetClickCount = {};
+        const LONG_PRESS_TIME = 800;
+        let longPressTimer = null;
+        let longPressTriggered = false;
         const socket = io();
         function addParticipantRow(name = '', gender = 'M') {
             const list = document.getElementById('participantList');
@@ -299,24 +301,24 @@
             if (shouldScroll) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }
 
-        function handleTeamClick(match, slot) {
-            if (match.isBye) return;
-            const clickedName = slot === 1 ? match.t1.name : match.t2.name;
-            if (clickedName.includes('?')) return;
-            if (match.winner === EMPTY_WINNER) {
-                socket.emit('winner:select', { matchId: match.id, slot });
-                return;
-            }
-            const key = match.id;
-            resetClickCount[key] = (resetClickCount[key] || 0) + 1;
-            setTimeout(() => { resetClickCount[key] = 0; }, 1200);
-            if (resetClickCount[key] >= 3) {
-                resetClickCount[key] = 0;
-                if (confirm('승자를 바꾸시겠습니까?')) {
-                    socket.emit('winner:reset', { matchId: match.id });
-                }
-            }
-        }
+function handleTeamClick(match, slot) {
+    if (match.isBye) return;
+
+    const clickedName = slot === 1 ? match.t1.name : match.t2.name;
+    if (clickedName.includes('?')) return;
+
+    if (match.winner === EMPTY_WINNER) {
+        socket.emit('winner:select', { matchId: match.id, slot });
+    }
+}
+        function handleTeamLongPress(match) {
+    if (match.isBye) return;
+    if (match.winner === EMPTY_WINNER) return;
+
+    if (confirm('승자를 바꾸시겠습니까?')) {
+        socket.emit('winner:reset', { matchId: match.id });
+    }
+}
 
         function drawBracket() {
             const container = document.getElementById('bracketOutput');
@@ -345,7 +347,41 @@
                             div.className = 'team clickable';
                             if (!match.isBye) {
                                 if (match.winner === teamName) div.classList.add('winner-highlight');
-                                div.onclick = () => handleTeamClick(match, slot);
+                                div.onmousedown = () => {
+    longPressTriggered = false;
+    longPressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        handleTeamLongPress(match);
+    }, LONG_PRESS_TIME);
+};
+
+div.onmouseup = () => {
+    clearTimeout(longPressTimer);
+
+    if (!longPressTriggered) {
+        handleTeamClick(match, slot);
+    }
+};
+
+div.onmouseleave = () => {
+    clearTimeout(longPressTimer);
+};
+
+div.ontouchstart = () => {
+    longPressTriggered = false;
+    longPressTimer = setTimeout(() => {
+        longPressTriggered = true;
+        handleTeamLongPress(match);
+    }, LONG_PRESS_TIME);
+};
+
+div.ontouchend = () => {
+    clearTimeout(longPressTimer);
+
+    if (!longPressTriggered) {
+        handleTeamClick(match, slot);
+    }
+};
                             } else {
                                 div.classList.add('winner-highlight');
                             }
