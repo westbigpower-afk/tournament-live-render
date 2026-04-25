@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>인하의대 스매쉬 토너먼트 대진표</title>
+    <!-- version: longpress-min-ff-fixed-2026-04-26 -->
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; padding: 20px; }
         h1 { color: #333; text-align: center; }
@@ -117,32 +118,36 @@
             const teams = [];
             let femaleFemaleCount = 0;
 
-            // 1순위: 남여 팀을 최대한 많이 만들어 여여 팀 발생을 최소화합니다.
-            while (females.length && males.length) {
+            // 핵심: 여여 팀을 금지하지 않고, 최소화합니다.
+            // 1) 가능한 만큼 남여 팀을 먼저 만듭니다.
+            while (females.length > 0 && males.length > 0) {
                 const female = females.pop();
                 const male = males.pop();
                 const pair = shuffle([female.name, male.name]);
                 teams.push(`${pair[0]} & ${pair[1]}`);
             }
 
-            // 2순위: 남자가 부족해서 여자가 남는 경우에만 여여 팀을 최소 개수로 만듭니다.
-            // 홀수로 1명이 남으면 1인 팀으로 둬서 불필요한 여여 팀을 만들지 않습니다.
+            // 2) 남자가 부족해서 여자가 2명 이상 남을 때만 여여 팀을 만듭니다.
+            //    예: 남 3, 여 5 → 남여 3팀 + 여여 1팀
             while (females.length >= 2) {
                 const f1 = females.pop();
                 const f2 = females.pop();
-                teams.push(`${f1.name} & ${f2.name}`);
+                const pair = shuffle([f1.name, f2.name]);
+                teams.push(`${pair[0]} & ${pair[1]}`);
                 femaleFemaleCount++;
             }
 
+            // 3) 여자가 1명 남으면 굳이 여여 팀을 만들지 않고 1인 팀으로 둡니다.
             if (females.length === 1) {
                 teams.push(`${females.pop().name} (1인)`);
             }
 
-            // 3순위: 남자가 남으면 남남 팀을 만듭니다.
+            // 4) 남자가 남으면 남남 팀 또는 1인 팀으로 둡니다.
             while (males.length >= 2) {
                 const m1 = males.pop();
                 const m2 = males.pop();
-                teams.push(`${m1.name} & ${m2.name}`);
+                const pair = shuffle([m1.name, m2.name]);
+                teams.push(`${pair[0]} & ${pair[1]}`);
             }
 
             if (males.length === 1) {
@@ -150,7 +155,7 @@
             }
 
             if (femaleFemaleCount > 0) {
-                alert(`여자 참가자가 남자 참가자보다 많아서 여여 팀 ${femaleFemaleCount}개가 불가피하게 생성됩니다.`);
+                alert(`남자 인원이 부족해서 여여 팀 ${femaleFemaleCount}개가 최소한으로 생성됩니다.`);
             }
 
             return shuffle(teams);
