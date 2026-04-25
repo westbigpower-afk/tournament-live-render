@@ -8,7 +8,12 @@
         h1 { color: #333; text-align: center; }
         .container { max-width: 1100px; margin: 0 auto; padding-bottom: 50px; }
         .input-section { text-align: center; margin-bottom: 20px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        textarea { width: 80%; height: 100px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+        .participant-list { width: 90%; max-width: 720px; margin: 12px auto 0; text-align: left; }
+        .participant-row { display: flex; align-items: center; gap: 10px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+        .participant-row input[type="text"] { flex: 1; padding: 9px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 5px; }
+        .gender-choice { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: bold; color: #444; white-space: nowrap; }
+        .small-button { padding: 8px 14px; background-color: #6c757d; font-size: 14px; margin-top: 8px; }
+        .small-button:hover { background-color: #5a6268; }
         button { padding: 12px 24px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 15px; font-weight: bold; }
         button:hover { background-color: #218838; }
         .teams-section { margin-bottom: 20px; text-align: center; }
@@ -28,14 +33,17 @@
         .empty-slot { border: 2px dashed #dee2e6; color: #adb5bd; background-color: #f8f9fa; box-shadow: none; }
         .team.clickable:hover { background-color: #e2e6ea; cursor: pointer; border-color: #155724; transform: translateY(-1px); }
         .winner-highlight { background-color: #d4edda !important; color: #155724 !important; border-color: #28a745 !important; }
+        .reset-button { background-color: #dc3545; margin-top: 20px; }
+        .reset-button:hover { background-color: #c82333; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🏆 2인 1조 랜선 토너먼트 (실시간 공유형)</h1>
         <div class="input-section">
-            <p>참여자의 이름을 한 줄에 한 명씩 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 승자 수정은 같은 경기에서 <b>3번 클릭 → OK</b>입니다.</span></p>
-            <textarea id="peopleInput" placeholder="예시:&#10;김철수&#10;이영희&#10;박지성&#10;손흥민&#10;이강인&#10;유재석&#10;강호동&#10;신동엽&#10;이수근"></textarea><br>
+            <p>참여자의 이름과 성별을 입력하세요.<br><span style="font-size: 13px; color: #666;">링크를 가진 모두가 같은 대진표와 승자 선택 결과를 실시간으로 봅니다. 팀은 랜덤으로 짜되, <b>여자 2명이 같은 팀이 되지 않도록</b> 남남 또는 남여 조합만 생성합니다. 승자 수정은 같은 경기에서 <b>3번 클릭 → OK</b>입니다.</span></p>
+            <div id="participantList" class="participant-list"></div>
+            <button class="small-button" onclick="addParticipantRow()">+ 참가자 추가</button><br>
             <button onclick="generateBracket()">대진표 짜기</button>
             <div id="connectionStatus">서버 연결 중...</div>
         </div>
@@ -54,9 +62,89 @@
         window.thirdPlaceResult = null;
         const resetClickCount = {};
         const socket = io();
+        function addParticipantRow(name = '', gender = 'M') {
+            const list = document.getElementById('participantList');
+            const row = document.createElement('div');
+            row.className = 'participant-row';
+            row.innerHTML = `
+                <input type="text" class="person-name" placeholder="이름" value="${escapeHtml(name)}">
+                <label class="gender-choice"><input type="checkbox" class="gender-check" value="M" ${gender === 'M' ? 'checked' : ''}> 남</label>
+                <label class="gender-choice"><input type="checkbox" class="gender-check" value="F" ${gender === 'F' ? 'checked' : ''}> 여</label>
+                <button type="button" class="small-button" style="margin-top:0; padding:7px 10px;" onclick="this.parentElement.remove()">삭제</button>
+            `;
+            const checks = row.querySelectorAll('.gender-check');
+            checks.forEach((check) => {
+                check.addEventListener('change', () => {
+                    if (check.checked) {
+                        checks.forEach((other) => { if (other !== check) other.checked = false; });
+                    } else {
+                        check.checked = true;
+                    }
+                });
+            });
+            list.appendChild(row);
+        }
+
+        function initializeParticipantRows() {
+            for (let i = 0; i < 8; i++) addParticipantRow();
+        }
+
+        function collectParticipants() {
+            const rows = document.querySelectorAll('.participant-row');
+            return Array.from(rows).map((row) => {
+                const name = row.querySelector('.person-name').value.trim();
+                const checkedGender = row.querySelector('.gender-check:checked');
+                return { name, gender: checkedGender ? checkedGender.value : 'M' };
+            }).filter((person) => person.name !== '');
+        }
+
+        function shuffle(array) {
+            const copied = [...array];
+            for (let i = copied.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copied[i], copied[j]] = [copied[j], copied[i]];
+            }
+            return copied;
+        }
+
+        function makeGenderBalancedTeams(participants) {
+            let males = shuffle(participants.filter((p) => p.gender === 'M'));
+            let females = shuffle(participants.filter((p) => p.gender === 'F'));
+
+            if (females.length > males.length + 1) {
+                throw new Error(`현재 인원에서는 여여 팀을 피할 수 없습니다. 남자 ${males.length}명, 여자 ${females.length}명이므로 여자를 최대 ${males.length + 1}명까지 배치할 수 있습니다.`);
+            }
+
+            const teams = [];
+
+            while (females.length && males.length) {
+                const female = females.pop();
+                const male = males.pop();
+                const pair = shuffle([female.name, male.name]);
+                teams.push(`${pair[0]} & ${pair[1]}`);
+            }
+
+            if (females.length === 1) {
+                teams.push(`${females.pop().name} (1인)`);
+            }
+
+            while (males.length >= 2) {
+                const m1 = males.pop();
+                const m2 = males.pop();
+                teams.push(`${m1.name} & ${m2.name}`);
+            }
+
+            if (males.length === 1) {
+                teams.push(`${males.pop().name} (1인)`);
+            }
+
+            return shuffle(teams);
+        }
+
 
         socket.on('connect', () => { document.getElementById('connectionStatus').innerText = '🟢 실시간 서버 연결됨'; });
         socket.on('disconnect', () => { document.getElementById('connectionStatus').innerText = '🔴 서버 연결 끊김 - 재연결 중'; });
+        socket.on('reset:failed', () => { alert('비밀번호가 틀렸습니다.'); });
         socket.on('state:update', (state) => {
             window.rounds = state.rounds || [];
             window.thirdPlaceResult = state.thirdPlaceResult || null;
@@ -85,17 +173,22 @@
         }
 
         function generateBracket() {
-            const inputText = document.getElementById('peopleInput').value;
-            let people = inputText.split('\n').map(p => p.trim()).filter(p => p !== '');
-            if (people.length < 3) { alert('최소 3명 이상 입력해주세요!'); return; }
-            people.sort(() => Math.random() - 0.5);
-            let teams = [];
-            let teamHtml = '<h3>🎲 결성된 조 목록</h3>';
-            for (let i = 0; i < people.length; i += 2) {
-                let teamName = people[i + 1] ? `${people[i]} & ${people[i+1]}` : `${people[i]} (1인)`;
-                teams.push(teamName);
-                teamHtml += `<span class="team-badge">${escapeHtml(teamName)}</span>`;
+            const participants = collectParticipants();
+            if (participants.length < 3) { alert('최소 3명 이상 입력해주세요!'); return; }
+
+            let teams;
+            try {
+                teams = makeGenderBalancedTeams(participants);
+            } catch (err) {
+                alert(err.message);
+                return;
             }
+
+            let teamHtml = '<h3>🎲 결성된 조 목록</h3>';
+            teams.forEach((teamName) => {
+                teamHtml += `<span class="team-badge">${escapeHtml(teamName)}</span>`;
+            });
+
             window.byeCycle = 0;
             let nodes = teams.map((t) => ({ sourceMatchId: null, name: t }));
             let rIdx = 0;
@@ -187,9 +280,21 @@
             thirdSection.innerHTML = `<h3 style="margin-top:0; color:#333;">🥉 3·4위전 결과</h3><div class="match" style="margin: 0 auto; flex-direction: row; gap: 20px; width: auto; justify-content: center;"><div class="team winner-highlight" style="width: 160px;">${escapeHtml(third)} (3위)</div><div class="team" style="width: 160px; background-color: #f8f9fa; color: #adb5bd; border-color: #dee2e6;">${escapeHtml(fourth)} (4위)</div></div>`;
         }
 
+        function requestFullReset() {
+            const password = prompt('초기화 비밀번호를 입력하세요.');
+            if (password === null) return;
+            if (password !== 'reset!') {
+                alert('비밀번호가 틀렸습니다.');
+                return;
+            }
+            if (confirm('대진표와 모든 승자 선택을 초기화하시겠습니까?')) {
+                socket.emit('tournament:reset', { password });
+            }
+        }
+
         function showPodium(first, second, third, shouldScroll = true) {
             let winnerDiv = document.getElementById('finalWinner');
-            winnerDiv.innerHTML = `<div style="font-size: 34px; margin-bottom: 15px; color: #d35400; font-weight: 900;">🥇 우승: ${escapeHtml(first)}</div><div style="font-size: 24px; color: #555; font-weight: bold;">🥈 2위: ${escapeHtml(second)}</div>${third ? `<div style="font-size: 22px; color: #8B4513; margin-top: 10px; font-weight: bold;">🥉 3위: ${escapeHtml(third)}</div>` : ''}`;
+            winnerDiv.innerHTML = `<div style="font-size: 34px; margin-bottom: 15px; color: #d35400; font-weight: 900;">🥇 우승: ${escapeHtml(first)}</div><div style="font-size: 24px; color: #555; font-weight: bold;">🥈 2위: ${escapeHtml(second)}</div>${third ? `<div style="font-size: 22px; color: #8B4513; margin-top: 10px; font-weight: bold;">🥉 3위: ${escapeHtml(third)}</div>` : ''}<button class="reset-button" onclick="requestFullReset()">🔄 전체 초기화</button>`;
             winnerDiv.style.display = 'block';
             if (shouldScroll) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }
@@ -300,6 +405,7 @@
             }
         }
         window.addEventListener('resize', () => { setTimeout(drawSVGConnections, 50); });
+        window.addEventListener('DOMContentLoaded', initializeParticipantRows);
     </script>
 </body>
 </html>

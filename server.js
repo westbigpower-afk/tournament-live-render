@@ -8,6 +8,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const EMPTY_WINNER = '? (승자)';
+const RESET_PASSWORD = 'reset!';
 
 let state = {
   teamsHtml: '',
@@ -61,6 +62,13 @@ function broadcast() {
   io.emit('state:update', clone(state));
 }
 
+function resetTournamentState() {
+  state.teamsHtml = '';
+  state.rounds = [];
+  state.thirdPlaceResult = null;
+  state.updatedAt = null;
+}
+
 io.on('connection', (socket) => {
   socket.emit('state:update', clone(state));
 
@@ -109,6 +117,15 @@ io.on('connection', (socket) => {
   socket.on('third:select', ({ third, fourth, first, second }) => {
     if (!third || !fourth || !first || !second) return;
     state.thirdPlaceResult = { third, fourth, first, second };
+    broadcast();
+  });
+
+  socket.on('tournament:reset', ({ password }) => {
+    if (password !== RESET_PASSWORD) {
+      socket.emit('reset:failed');
+      return;
+    }
+    resetTournamentState();
     broadcast();
   });
 });
